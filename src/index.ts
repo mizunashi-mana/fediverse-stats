@@ -14,9 +14,7 @@ async function main(): Promise<void> {
         options.queueFile,
     );
 
-    for (const host of args) {
-        await measurement.enqueueHost(host);
-    }
+    await measurement.enqueueHost(args);
 
     let limit = options.fetchLimit;
     while (limit === undefined || limit > 0) {
@@ -71,9 +69,7 @@ async function main(): Promise<void> {
             peers_count: peers.data.hosts.length,
         });
         console.debug(`Registered stats of ${host}.`);
-        for (const peerHost of peers.data.hosts) {
-            await measurement.enqueueHost(peerHost);
-        }
+        await measurement.enqueueHost(peers.data.hosts);
     }
 
     console.log('Finish.');

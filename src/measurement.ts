@@ -33,16 +33,23 @@ export class Measurement {
         await appendLines(this.resultFilePath, [stats]);
     }
 
-    async enqueueHost(host: string): Promise<void> {
-        if (this.queued[host] === undefined) {
-            const queueLine: QueueLine = {
-                host,
-            };
-            await appendLines(this.queueFilePath, [queueLine]);
-            this.queued[host] = {
+    async enqueueHost(hosts: string[]): Promise<void> {
+        const queueLines: QueueLine[] = [];
+        const queued: { [host: string]: boolean; } = {};
+        for (const host of hosts) {
+            if (this.queued[host] === undefined && queued[host] === undefined) {
+                queueLines.push({
+                    host,
+                });
+            }
+        }
+
+        await appendLines(this.queueFilePath, queueLines);
+        for (const queueLine of queueLines) {
+            this.queued[queueLine.host] = {
                 checked: false,
             };
-            this.hostsQueue.push(host);
+            this.hostsQueue.push(queueLine.host);
         }
     }
 
@@ -84,8 +91,7 @@ export async function loadMeasurement(
 
     try {
         await fsPromises.access(queueFilePath, fs.constants.R_OK | fs.constants.W_OK);
-        const backupFilePath = `${queueFilePath}.backup`
-        await fsPromises.copyFile(queueFilePath, backupFilePath);
+        await uniqueQueueFile(queueFilePath);
     } catch {
         await fsPromises.writeFile(queueFilePath, '');
     }
@@ -99,6 +105,28 @@ export async function loadMeasurement(
     });
 
     return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue);
+}
+
+async function uniqueQueueFile(filePath: string): Promise<void> {
+    const backupFilePath = `${filePath}.backup`
+    await fsPromises.copyFile(filePath, backupFilePath);
+
+    const queuedHosts: { [host: string]: boolean; } = {};
+    await fsPromises.writeFile(filePath, '');
+
+    let buffer: QueueLine[] = [];
+    await loadJsonLines(backupFilePath, async (line: QueueLine) => {
+        if (!queuedHosts[line.host]) {
+            buffer.push(line);
+        }
+        queuedHosts[line.host] = true;
+
+        if (buffer.length > 512) {
+            await appendLines(filePath, buffer);
+            buffer = [];
+        }
+    });
+    await appendLines(filePath, buffer);
 }
 
 async function appendLines<T>(filePath: string, lines: T[]): Promise<void> {
