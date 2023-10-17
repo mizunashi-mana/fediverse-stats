@@ -55,7 +55,7 @@ async function main(): Promise<void> {
                 // continue
                 break;
             case 'fail':
-                console.debug(`Failed to fetch peers of ${host}: ${peers.detail}.`);
+                console.debug(`Failed to fetch peers of ${host}: ${peers.detail}`);
                 await measurement.registerStats({
                     host,
                     type: 'ok',
@@ -96,7 +96,7 @@ async function parseArgs(): Promise<{
 
     program.option('--result-file <PATH>', 'A file path of results.', 'fediverse-stats.txt');
     program.option('--queue-file <PATH>', 'A file path of queue.');
-    program.option('--fetch-timeout-sec <INT>', 'Timeout to fetch by seconds.', parseInt, 5);
+    program.option('--fetch-timeout-sec <INT>', 'Timeout to fetch by seconds.', parseInt, 10);
     program.option('--fetch-limit <INT>', 'Limit count to fetch (optional)', parseInt);
     program.argument('<HOST>', 'The start hosts to fetch');
 

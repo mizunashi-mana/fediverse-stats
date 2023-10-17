@@ -2,7 +2,7 @@ import Axios, { AxiosResponse } from 'axios';
 import { URL } from 'node:url';
 import { FetchResult, NodeInfo, NodeInfoResourceType, Peers } from './types.js';
 import { JsonExtractor } from './json_extractor.js';
-import { isNotUndefined } from './util.js';
+import { inspectError, isNotUndefined } from './util.js';
 
 export class Fetcher {
     private timeoutSec: number;
@@ -12,50 +12,27 @@ export class Fetcher {
     }
 
     async fetchNodeinfo(host: string): Promise<FetchResult<NodeInfo>> {
-        const wellknownResponseUrl = new URL('/.well-known/nodeinfo', `https://${host}`);
-        let wellknownResponse: AxiosResponse<unknown, any>;
-        try {
-            wellknownResponse = await this.requestWithHandling(
-                wellknownResponseUrl,
-                {
-                    'Accept': 'application/json',
-                },
-            );
-        } catch (e) {
-            return {
-                type: 'fail',
-                resourceStatus: 'unknown',
-                detail: `Failed to fetch ${wellknownResponseUrl}: ${e}`,
-            };
-        }
-        switch (wellknownResponse.status) {
-            case 200:
+        const wellknownResourceUrl = new URL('/.well-known/nodeinfo', `https://${host}`);
+        const wellknownResourceResponse = await this.fetchResource(
+            wellknownResourceUrl,
+            {
+                'Accept': 'application/json',
+            },
+        );
+        switch (wellknownResourceResponse.type) {
+            case 'ok':
                 // continue
                 break;
-            case 410:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'gone',
-                    detail: `Failed to fetch ${wellknownResponseUrl}: the resource is gone`,
-                };
-            default:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'unknown',
-                    detail: `
-Failed to fetch ${wellknownResponseUrl}: invalid status=${wellknownResponse.status}
-${JSON.stringify(wellknownResponse.data)}
-                    `,
-                };
+            case 'fail':
+                return wellknownResourceResponse;
         }
 
-        const wellknownResourceData = new JsonExtractor(wellknownResponse.data);
-        const links = wellknownResourceData.asObject('links')?.asArray();
+        const links = wellknownResourceResponse.data.asObject('links')?.asArray();
         if (links === undefined) {
             return {
                 type: 'fail',
                 resourceStatus: 'not-supported',
-                detail: `Failed to fetch ${wellknownResponseUrl}: invalid schema.`,
+                detail: `Failed to fetch ${wellknownResourceUrl}: invalid schema.`,
             };
         }
 
@@ -69,7 +46,7 @@ ${JSON.stringify(wellknownResponse.data)}
             try {
                 href = new URL(hrefStr);
             } catch (e) {
-                console.debug(`Failed to parse ${wellknownResponseUrl}: ${e}`);
+                console.debug(`Failed to parse ${wellknownResourceUrl}: ${e}`);
                 continue;
             }
 
@@ -80,56 +57,34 @@ ${JSON.stringify(wellknownResponse.data)}
                 case 'http://nodeinfo.diaspora.software/ns/schema/2.1':
                     return await this.fetchRawNodeinfo(href, rel);
                 default:
-                    console.debug(`Unsupported ${rel} on ${wellknownResponseUrl}.`);
+                    console.debug(`Unsupported ${rel} on ${wellknownResourceUrl}.`);
                     continue;
             }
         }
         return {
             type: 'fail',
             resourceStatus: 'not-supported',
-            detail: `Supported resources are not available on ${wellknownResponseUrl}.`,
+            detail: `Supported resources are not available on ${wellknownResourceUrl}.`,
         };
     }
 
     async fetchPeers(host: string): Promise<FetchResult<Peers>> {
         const mastodonPeersUrl = new URL('/api/v1/instance/peers', `https://${host}`);
-        let mastodonPeersResponse: AxiosResponse<unknown, any>;
-        try {
-            mastodonPeersResponse = await this.requestWithHandling(
-                mastodonPeersUrl,
-                {
-                    'Accept': 'application/json',
-                },
-            );
-        } catch (e) {
-            return {
-                type: 'fail',
-                resourceStatus: 'unknown',
-                detail: `Failed to fetch ${mastodonPeersUrl}: ${e}`,
-            };
-        }
-        switch (mastodonPeersResponse.status) {
-            case 200:
+        const mastodonPeersResponse = await this.fetchResource(
+            mastodonPeersUrl,
+            {
+                'Accept': 'application/json',
+            },
+        );
+        switch (mastodonPeersResponse.type) {
+            case 'ok':
                 // continue
                 break;
-            case 410:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'gone',
-                    detail: `Failed to fetch ${mastodonPeersUrl}: the resource is gone`,
-                };
-            default:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'unknown',
-                    detail: `
-Failed to fetch ${mastodonPeersUrl}: invalid status=${mastodonPeersResponse.status}
-${JSON.stringify(mastodonPeersResponse.data)}
-                    `,
-                };
+            case 'fail':
+                return mastodonPeersResponse;
         }
-        console.debug('Fetched peers.');
-        const mastodonPeersData = new JsonExtractor(mastodonPeersResponse.data).asArray()?.map(x => x.asString()).filter(isNotUndefined);
+
+        const mastodonPeersData = mastodonPeersResponse.data.asArray()?.map(x => x.asString()).filter(isNotUndefined);
         if (mastodonPeersData !== undefined) {
             return {
                 type: 'ok',
@@ -147,44 +102,21 @@ ${JSON.stringify(mastodonPeersResponse.data)}
     }
 
     private async fetchRawNodeinfo(url: URL, type: NodeInfoResourceType): Promise<FetchResult<NodeInfo>> {
-        let response: AxiosResponse<unknown, any>;
-        try {
-            response = await this.requestWithHandling(
-                url,
-                {
-                    'Accept': 'application/json',
-                },
-            );
-        } catch (e) {
-            return {
-                type: 'fail',
-                resourceStatus: 'unknown',
-                detail: `Failed to fetch ${url}: ${e}`,
-            };
-        }
-        switch (response.status) {
-            case 200:
+        const response = await this.fetchResource(
+            url,
+            {
+                'Accept': 'application/json',
+            },
+        );
+        switch (response.type) {
+            case 'ok':
                 // continue
                 break;
-            case 410:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'gone',
-                    detail: `Failed to fetch ${url}: the resource is gone`,
-                };
-            default:
-                return {
-                    type: 'fail',
-                    resourceStatus: 'unknown',
-                    detail: `
-Failed to fetch ${url}: invalid status=${response.status}
-${JSON.stringify(response.data)}
-                    `,
-                };
+            case 'fail':
+                return response;
         }
 
-        const data = new JsonExtractor(response.data);
-
+        const data = response.data;
         return {
             type: 'ok',
             data: {
@@ -220,12 +152,62 @@ ${JSON.stringify(response.data)}
         };
     }
 
-    private async requestWithHandling<T>(url: URL, headers: { [key: string]: string; }): Promise<AxiosResponse<T, any>> {
-        return await Axios.request({
-            method: 'get',
-            url: url.toString(),
-            headers,
-            timeout: this.timeoutSec * 1000,
-        });
+    private async fetchResource(url: URL, headers: { [key: string]: string; }): Promise<FetchResult<JsonExtractor>> {
+        let response: AxiosResponse<unknown, any>;
+        try {
+            response = await Axios.request({
+                method: 'get',
+                url: url.toString(),
+                headers,
+                timeout: this.timeoutSec * 1000,
+            });
+        } catch (error: any) {
+            if (typeof error !== 'object' || error === null) {
+                return {
+                    type: 'fail',
+                    resourceStatus: 'unknown',
+                    detail: `Failed to fetch ${url}: ${inspectError(error)}`,
+                };
+            }
+
+            if (error.response) {
+                switch (error.response.status) {
+                    case 410:
+                        return {
+                            type: 'fail',
+                            resourceStatus: 'gone',
+                            detail: `Failed to fetch ${url}: the resource is gone.`,
+                        };
+                    case 400:
+                    case 404:
+                        return {
+                            type: 'fail',
+                            resourceStatus: 'not-supported',
+                            detail: `Failed to fetch ${url}: the resource is not available.`,
+                        };
+                    default:
+                        let detail = JSON.stringify(error.response.data);
+                        if (detail.length > 100) {
+                            detail = `${detail.substring(0, 100)}...`;
+                        }
+                        return {
+                            type: 'fail',
+                            resourceStatus: 'unknown',
+                            detail: `Failed to fetch ${url}: invalid status=${error.response.status}, detail=${detail}`,
+                        };
+                }
+            }
+
+            return {
+                type: 'fail',
+                resourceStatus: 'unknown',
+                detail: `Failed to fetch ${url}: ${inspectError(error)}`,
+            };
+        }
+
+        return {
+            type: 'ok',
+            data: new JsonExtractor(response.data),
+        };
     }
 }

@@ -62,3 +62,7 @@ export type InstanceStats =
         node_info: NodeInfo;
         peers_count?: number;
     };
+
+export type QueueLine = {
+    host: string;
+};
