@@ -52,8 +52,8 @@ export class Fetcher {
 
             const rel = link.asObject('rel')?.asString();
             switch (rel) {
+                case 'http://nodeinfo.diaspora.software/ns/schema/1.0':
                 case 'http://nodeinfo.diaspora.software/ns/schema/2.0':
-                    return await this.fetchRawNodeinfo(href, rel);
                 case 'http://nodeinfo.diaspora.software/ns/schema/2.1':
                     return await this.fetchRawNodeinfo(href, rel);
                 default:

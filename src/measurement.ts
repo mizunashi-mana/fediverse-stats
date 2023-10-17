@@ -2,36 +2,46 @@ import * as fsPromises from 'node:fs/promises';
 import * as fs from 'node:fs';
 import { InstanceStats, QueueLine } from './types.js';
 
+type Queued = {
+    [host: string]: {
+        checked: boolean;
+    };
+};
+
 export class Measurement {
     private resultFilePath: string;
-    private checked: { [host: string]: boolean; };
-
     private queueFilePath: string;
+    private queued: Queued;
     private hostsQueue: string[];
 
     constructor(
         resultFilePath: string,
-        checked: { [host: string]: boolean; },
+        queued: Queued,
         queueFilePath: string,
         hostsQueue: string[],
     ) {
         this.resultFilePath = resultFilePath;
-        this.checked = checked;
+        this.queued = queued;
         this.queueFilePath = queueFilePath;
         this.hostsQueue = hostsQueue;
     }
 
     async registerStats(stats: InstanceStats): Promise<void> {
-        this.checked[stats.host] = true;
+        this.queued[stats.host] = {
+            checked: true,
+        };
         await appendLines(this.resultFilePath, [stats]);
     }
 
     async enqueueHost(host: string): Promise<void> {
-        if (!this.checked[host]) {
+        if (this.queued[host] === undefined) {
             const queueLine: QueueLine = {
                 host,
             };
             await appendLines(this.queueFilePath, [queueLine]);
+            this.queued[host] = {
+                checked: false,
+            };
             this.hostsQueue.push(host);
         }
     }
@@ -43,7 +53,7 @@ export class Measurement {
                 return undefined;
             }
 
-            if (!this.checked[host]) {
+            if (this.queued[host]?.checked !== true) {
                 return host;
             }
         }
@@ -58,7 +68,7 @@ export async function loadMeasurement(
     resultFilePath: string,
     queueFilePath: string,
 ): Promise<Measurement> {
-    const checked: { [host: string]: boolean; } = {};
+    const queued: Queued = {};
     const hostsQueue: string[] = [];
 
     try {
@@ -67,49 +77,33 @@ export async function loadMeasurement(
         await fsPromises.writeFile(resultFilePath, '');
     }
     await loadJsonLines(resultFilePath, async (data: InstanceStats) => {
-        checked[data.host] = true;
+        queued[data.host] = {
+            checked: true,
+        };
     });
 
     try {
         await fsPromises.access(queueFilePath, fs.constants.R_OK | fs.constants.W_OK);
-        await uniqueQueueFile(queueFilePath);
+        const backupFilePath = `${queueFilePath}.backup`
+        await fsPromises.copyFile(queueFilePath, backupFilePath);
     } catch {
         await fsPromises.writeFile(queueFilePath, '');
     }
     await loadJsonLines(queueFilePath, async (data: QueueLine) => {
-        if (!checked[data.host]) {
+        if (queued[data.host] === undefined) {
+            queued[data.host] = {
+                checked: false,
+            };
             hostsQueue.push(data.host);
         }
     });
 
-    return new Measurement(resultFilePath, checked, queueFilePath, hostsQueue);
+    return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue);
 }
 
 async function appendLines<T>(filePath: string, lines: T[]): Promise<void> {
     const contents = `${lines.map(x => JSON.stringify(x)).join('\n')}\n`;
     await fsPromises.appendFile(filePath, contents);
-}
-
-async function uniqueQueueFile(filePath: string): Promise<void> {
-    const backupFilePath = `${filePath}.backup`
-    await fsPromises.copyFile(filePath, backupFilePath);
-
-    const queuedHosts: { [host: string]: boolean; } = {};
-    await fsPromises.writeFile(filePath, '');
-
-    let buffer: QueueLine[] = [];
-    await loadJsonLines(backupFilePath, async (line: QueueLine) => {
-        if (!queuedHosts[line.host]) {
-            buffer.push(line);
-        }
-        queuedHosts[line.host] = true;
-
-        if (buffer.length > 512) {
-            await appendLines(filePath, buffer);
-            buffer = [];
-        }
-    });
-    await appendLines(filePath, buffer);
 }
 
 async function loadJsonLines<T>(filePath: string, processor: (lineJson: T) => Promise<void>): Promise<void> {
@@ -138,7 +132,6 @@ async function loadJsonLines<T>(filePath: string, processor: (lineJson: T) => Pr
         }
     }
     if (lineBuffer !== '') {
-        console.log(`buffer: ${lineBuffer}`);
         const data: T = JSON.parse(lineBuffer);
         await processor(data);
     }

@@ -10,6 +10,7 @@ export type FetchResult<T> =
     };
 
 export type NodeInfoResourceType =
+    | 'http://nodeinfo.diaspora.software/ns/schema/1.0'
     | 'http://nodeinfo.diaspora.software/ns/schema/2.0'
     | 'http://nodeinfo.diaspora.software/ns/schema/2.1'
     ;
