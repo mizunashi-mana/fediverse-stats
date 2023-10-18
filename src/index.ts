@@ -8,10 +8,12 @@ async function main(): Promise<void> {
         args
     } = await parseArgs();
 
+    console.log("Setup...");
     const fetcher = new Fetcher(options.fetchTimeoutSec);
     const measurement = await loadMeasurement(
         options.resultFile,
         options.queueFile,
+        options.ngListFile,
     );
 
     await measurement.enqueueHost(args);
@@ -53,7 +55,7 @@ async function main(): Promise<void> {
                 // continue
                 break;
             case 'fail':
-                console.debug(`Failed to fetch peers of ${host}: ${peers.detail}`);
+                console.warn(`Failed to fetch peers of ${host}: ${peers.detail}`);
                 await measurement.registerStats({
                     host,
                     type: 'ok',
@@ -69,7 +71,11 @@ async function main(): Promise<void> {
             peers_count: peers.data.hosts.length,
         });
         console.debug(`Registered stats of ${host}.`);
-        await measurement.enqueueHost(peers.data.hosts);
+
+        const enqueueResult = await measurement.enqueueHost(peers.data.hosts);
+        if (enqueueResult.includeNg) {
+            console.warn(`The peers of ${host} include some NG peers.`);
+        }
     }
 
     console.log('Finish.');
@@ -77,9 +83,10 @@ async function main(): Promise<void> {
 
 async function parseArgs(): Promise<{
     options: {
-        fetchTimeoutSec: number;
         queueFile: string;
         resultFile: string;
+        ngListFile: string;
+        fetchTimeoutSec: number;
         fetchLimit?: number;
     };
     args: string[];
@@ -92,6 +99,7 @@ async function parseArgs(): Promise<{
 
     program.option('--result-file <PATH>', 'A file path of results.', 'fediverse-stats.txt');
     program.option('--queue-file <PATH>', 'A file path of queue.');
+    program.option('--ng-list-file <PATH>', 'A file path of NG filters.', 'ng-list.txt');
     program.option('--fetch-timeout-sec <INT>', 'Timeout to fetch by seconds.', parseInt, 10);
     program.option('--fetch-limit <INT>', 'Limit count to fetch (optional)', parseInt);
     program.argument('<HOST>', 'The start hosts to fetch');
@@ -107,6 +115,7 @@ async function parseArgs(): Promise<{
             fetchLimit: options.fetchLimit,
             resultFile: options.resultFile,
             queueFile: options.queueFile === undefined ? `${options.resultFile}.queue` : options.queueFile,
+            ngListFile: options.ngListFile,
         },
         args,
     };

@@ -62,8 +62,16 @@ export type InstanceStats =
         type: 'ok';
         node_info: NodeInfo;
         peers_count?: number;
-    };
+    }
+    ;
 
 export type QueueLine = {
     host: string;
 };
+
+export type NgFilter =
+    | {
+        type: 'subdomain';
+        main_domain: string;
+    }
+    ;

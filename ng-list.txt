@@ -1,0 +1,2 @@
+{"type":"subdomain","main_domain":"activitypub-troll.cf"}
+{"type":"subdomain","main_domain":"gab.best"}

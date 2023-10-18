@@ -1,6 +1,6 @@
 import * as fsPromises from 'node:fs/promises';
 import * as fs from 'node:fs';
-import { InstanceStats, QueueLine } from './types.js';
+import { InstanceStats, NgFilter, QueueLine } from './types.js';
 
 type Queued = {
     [host: string]: {
@@ -8,22 +8,31 @@ type Queued = {
     };
 };
 
+type NgList = NgFilter[];
+
 export class Measurement {
     private resultFilePath: string;
     private queueFilePath: string;
     private queued: Queued;
     private hostsQueue: string[];
 
+    /**
+     * TODO: Optimize and introduce auto detection.
+     */
+    private ngList: NgList;
+
     constructor(
         resultFilePath: string,
         queued: Queued,
         queueFilePath: string,
         hostsQueue: string[],
+        ngList: NgFilter[],
     ) {
         this.resultFilePath = resultFilePath;
         this.queued = queued;
         this.queueFilePath = queueFilePath;
         this.hostsQueue = hostsQueue;
+        this.ngList = ngList;
     }
 
     async registerStats(stats: InstanceStats): Promise<void> {
@@ -33,10 +42,21 @@ export class Measurement {
         await appendLines(this.resultFilePath, [stats]);
     }
 
-    async enqueueHost(hosts: string[]): Promise<void> {
+    async enqueueHost(hosts: string[]): Promise<{
+        includeNg: boolean;
+    }> {
+        const result = {
+            includeNg: false,
+        };
+
         const queueLines: QueueLine[] = [];
         const queued: { [host: string]: boolean; } = {};
         for (const host of hosts) {
+            if (isNgHost(host, this.ngList)) {
+                result.includeNg = true;
+                continue;
+            }
+
             if (this.queued[host] === undefined && queued[host] === undefined) {
                 queueLines.push({
                     host,
@@ -51,6 +71,8 @@ export class Measurement {
             };
             this.hostsQueue.push(queueLine.host);
         }
+
+        return result;
     }
 
     dequeueHost(): string | undefined {
@@ -74,14 +96,21 @@ export class Measurement {
 export async function loadMeasurement(
     resultFilePath: string,
     queueFilePath: string,
+    ngListFilePath: string,
 ): Promise<Measurement> {
     const queued: Queued = {};
     const hostsQueue: string[] = [];
+    const ngList: NgList = [];
 
+    let existsResultFile = false;
     try {
         await fsPromises.access(resultFilePath, fs.constants.R_OK | fs.constants.W_OK);
+        existsResultFile = true;
     } catch {
         await fsPromises.writeFile(resultFilePath, '');
+    }
+    if (existsResultFile) {
+        await fsPromises.copyFile(resultFilePath, `${resultFilePath}.backup`);
     }
     await loadJsonLines(resultFilePath, async (data: InstanceStats) => {
         queued[data.host] = {
@@ -89,11 +118,29 @@ export async function loadMeasurement(
         };
     });
 
+    let existsNgListFile = false;
+    try {
+        await fsPromises.access(ngListFilePath, fs.constants.R_OK | fs.constants.W_OK);
+        existsNgListFile = true;
+    } catch {
+        await fsPromises.writeFile(ngListFilePath, '');
+    }
+    if (existsNgListFile) {
+        await fsPromises.copyFile(ngListFilePath, `${ngListFilePath}.backup`);
+    }
+    await loadJsonLines(ngListFilePath, async (data: NgFilter) => {
+        ngList.push(data);
+    });
+
+    let existsQueueFile = false;
     try {
         await fsPromises.access(queueFilePath, fs.constants.R_OK | fs.constants.W_OK);
-        await uniqueQueueFile(queueFilePath);
+        existsQueueFile = true;
     } catch {
         await fsPromises.writeFile(queueFilePath, '');
+    }
+    if (existsQueueFile) {
+        await uniqueQueueFile(queueFilePath, ngList);
     }
     await loadJsonLines(queueFilePath, async (data: QueueLine) => {
         if (queued[data.host] === undefined) {
@@ -104,10 +151,10 @@ export async function loadMeasurement(
         }
     });
 
-    return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue);
+    return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue, ngList);
 }
 
-async function uniqueQueueFile(filePath: string): Promise<void> {
+async function uniqueQueueFile(filePath: string, ngList: NgList): Promise<void> {
     const backupFilePath = `${filePath}.backup`
     await fsPromises.copyFile(filePath, backupFilePath);
 
@@ -116,7 +163,7 @@ async function uniqueQueueFile(filePath: string): Promise<void> {
 
     let buffer: QueueLine[] = [];
     await loadJsonLines(backupFilePath, async (line: QueueLine) => {
-        if (!queuedHosts[line.host]) {
+        if (!queuedHosts[line.host] && !isNgHost(line.host, ngList)) {
             buffer.push(line);
         }
         queuedHosts[line.host] = true;
@@ -127,6 +174,19 @@ async function uniqueQueueFile(filePath: string): Promise<void> {
         }
     });
     await appendLines(filePath, buffer);
+}
+
+function isNgHost(host: string, ngList: NgList): boolean {
+    const [domain] = host.split(':', 2);
+    for (const ngFilter of ngList) {
+        switch (ngFilter.type) {
+            case 'subdomain':
+                if (domain.endsWith(`.${ngFilter.main_domain}`)) {
+                    return true;
+                }
+        }
+    }
+    return false;
 }
 
 async function appendLines<T>(filePath: string, lines: T[]): Promise<void> {
@@ -153,8 +213,10 @@ async function loadJsonLines<T>(filePath: string, processor: (lineJson: T) => Pr
             lineBuffer = `${lineBuffer}${lineChunk}`;
             chunk = chunk.substring(splitIndex + 1);
 
-            const data: T = JSON.parse(lineBuffer);
-            await processor(data);
+            if (lineBuffer !== '' && !lineBuffer.startsWith('#')) {
+                const data: T = JSON.parse(lineBuffer);
+                await processor(data);
+            }
 
             lineBuffer = '';
         }
