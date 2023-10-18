@@ -11,8 +11,8 @@ export class Fetcher {
         this.timeoutSec = timeoutSec;
     }
 
-    async fetchNodeinfo(host: string): Promise<FetchResult<NodeInfo>> {
-        const wellknownResourceUrl = new URL('/.well-known/nodeinfo', `https://${host}`);
+    async fetchNodeinfo(baseUrl: URL): Promise<FetchResult<NodeInfo>> {
+        const wellknownResourceUrl = new URL('/.well-known/nodeinfo', baseUrl);
         const wellknownResourceResponse = await this.fetchResource(
             wellknownResourceUrl,
             {
@@ -84,7 +84,11 @@ export class Fetcher {
                 return mastodonPeersResponse;
         }
 
-        const mastodonPeersData = mastodonPeersResponse.data.asArray()?.map(x => x.asString()).filter(isNotUndefined);
+        const mastodonPeersData = mastodonPeersResponse.data
+            .asArray()
+            ?.map(x => x.asString())
+            .filter(isNotUndefined)
+            ;
         if (mastodonPeersData !== undefined) {
             return {
                 type: 'ok',

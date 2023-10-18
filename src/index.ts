@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { Fetcher } from "./fetcher.js";
 import { loadMeasurement } from "./measurement.js";
-import { FetchResult, Peers } from "./types.js";
 
 async function main(): Promise<void> {
     const {
@@ -11,18 +10,19 @@ async function main(): Promise<void> {
 
     console.log("Setup...");
     const fetcher = new Fetcher(options.fetchTimeoutSec);
-    const measurement = await loadMeasurement(
-        options.resultFile,
-        options.queueFile,
-        options.ngListFile,
-    );
+    const measurement = await loadMeasurement({
+        resultFilePath: options.resultFile,
+        queueFilePath: options.queueFile,
+        checkedFilePath: options.checkedFile,
+        ngListFilePath: options.ngListFile,
+    });
 
-    await measurement.enqueueHost(args, undefined);
+    await measurement.enqueueTargets(args, undefined);
 
     let limit = options.fetchLimit;
     while (limit === undefined || limit > 0) {
-        const host = measurement.dequeueHost();
-        if (host === undefined) {
+        const target = measurement.dequeueTarget();
+        if (target === undefined) {
             break;
         }
 
@@ -30,20 +30,26 @@ async function main(): Promise<void> {
             limit = limit - 1;
         }
 
-        const queuedCount = measurement.queuedCount();
-        const checkedCount = measurement.checkedCount();
-        const tag = `${queuedCount.toString().padStart(6, ' ')} rests, ${checkedCount.toString().padStart(6, ' ')} checked`;
-        console.log(`[${tag}]: fetch ${host}...`);
+        const queuedTargetsCount = measurement.queuedTargetsCount().toString().padStart(6, ' ');
+        const checkedEndpointsCount = measurement.checkedEndpointsCount().toString().padStart(6, ' ');
+        console.log(`[${queuedTargetsCount} rests, ${checkedEndpointsCount} checked]: fetch ${target.baseUrl}...`);
 
-        const nodeInfo = await fetcher.fetchNodeinfo(host);
-        console.debug(`Fetched the node info of ${host}.`);
+        const nodeInfo = await fetcher.fetchNodeinfo(target.baseUrl);
+        console.debug(`Fetched the node info of ${target.baseUrl}.`);
         switch (nodeInfo.type) {
             case 'ok':
                 // continue
                 break;
             case 'fail':
-                await measurement.registerStats({
-                    host,
+                // Use the base URL as an endpoint.
+                if (measurement.isEndpointChecked(target.baseUrl)) {
+                    await measurement.markTargetsChecked([target]);
+
+                    continue;
+                }
+
+                await measurement.registerStats(target, {
+                    endpoint: target.baseUrl.toString(),
                     type: 'fail',
                     resource_status: nodeInfo.resourceStatus,
                     detail: nodeInfo.detail,
@@ -51,50 +57,44 @@ async function main(): Promise<void> {
                 continue;
         }
 
-        const nodeInfoResourceUrl = new URL(nodeInfo.data.resource_url);
-        const baseUrls = [
-            nodeInfoResourceUrl,
-        ];
-        if (nodeInfoResourceUrl.host !== host) {
-            baseUrls.push(new URL(`https://${host}`));
+        const endpoint = measurement.endpointByResourceUrl(new URL(nodeInfo.data.resource_url));
+        if (measurement.isEndpointChecked(endpoint)) {
+            await measurement.markTargetsChecked([target]);
+
+            console.warn(`${endpoint} is already fetched. The target may be wrong: ${target.baseUrl}`);
+            continue;
         }
-        let peers: FetchResult<Peers> = {
-            type: 'fail',
-            resourceStatus: 'not-supported',
-            detail: 'unreachable',
-        };
-        for (const baseUrl of baseUrls) {
-            peers = await fetcher.fetchPeers(baseUrl);
-            console.debug(`Fetched peers of ${baseUrl.host}.`);
-            if (peers.type === 'ok') {
-                break;
-            }
-        }
+
+        const peers = await fetcher.fetchPeers(endpoint);
+        console.debug(`Fetched peers of ${endpoint}.`);
         switch (peers.type) {
             case 'ok':
                 // continue
                 break;
             case 'fail':
-                console.warn(`Failed to fetch peers of ${host}: ${peers.detail}`);
-                await measurement.registerStats({
-                    host,
+                console.warn(`Failed to fetch peers of ${endpoint}: ${peers.detail}`);
+                await measurement.registerStats(target, {
+                    endpoint: endpoint.toString(),
                     type: 'ok',
                     node_info: nodeInfo.data,
                 });
                 continue;
         }
 
-        await measurement.registerStats({
-            host,
+        await measurement.registerStats(target, {
+            endpoint: endpoint.toString(),
             type: 'ok',
             node_info: nodeInfo.data,
             peers_count: peers.data.hosts.length,
         });
-        console.debug(`Registered stats of ${host}.`);
+        console.debug(`Registered stats of ${endpoint}.`);
 
-        const enqueueResult = await measurement.enqueueHost(peers.data.hosts, host);
+        const enqueueResult = await measurement.enqueueTargets(peers.data.hosts, endpoint);
         if (enqueueResult.includeNg) {
-            console.warn(`The peers of ${host} include some NG peers.`);
+            console.warn(`The peers of ${endpoint} include some NG peers.`);
+        }
+        if (enqueueResult.includeInvalid) {
+            console.warn(`The peers of ${endpoint} include some invalid peers.`);
         }
     }
 
@@ -104,6 +104,7 @@ async function main(): Promise<void> {
 async function parseArgs(): Promise<{
     options: {
         queueFile: string;
+        checkedFile: string;
         resultFile: string;
         ngListFile: string;
         fetchTimeoutSec: number;
@@ -119,6 +120,7 @@ async function parseArgs(): Promise<{
 
     program.option('--result-file <PATH>', 'A file path of results.', 'fediverse-stats.txt');
     program.option('--queue-file <PATH>', 'A file path of queue.');
+    program.option('--checked-file <PATH>', 'A file path of checked.');
     program.option('--ng-list-file <PATH>', 'A file path of NG filters.', 'ng-list.txt');
     program.option('--fetch-timeout-sec <INT>', 'Timeout to fetch by seconds.', parseInt, 3);
     program.option('--fetch-limit <INT>', 'Limit count to fetch (optional)', parseInt);
@@ -134,7 +136,8 @@ async function parseArgs(): Promise<{
             fetchTimeoutSec: options.fetchTimeoutSec,
             fetchLimit: options.fetchLimit,
             resultFile: options.resultFile,
-            queueFile: options.queueFile === undefined ? `${options.resultFile}.queue` : options.queueFile,
+            queueFile: options.queueFile ?? `${options.resultFile}.queue`,
+            checkedFile: options.checkedFile ?? `${options.resultFile}.checked`,
             ngListFile: options.ngListFile,
         },
         args,

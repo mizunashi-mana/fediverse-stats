@@ -52,13 +52,13 @@ export type Peers = {
 
 export type InstanceStats =
     | {
-        host: string;
+        endpoint: string;
         type: 'fail';
         resource_status: 'gone' | 'not-supported' | 'unknown';
         detail: string;
     }
     | {
-        host: string;
+        endpoint: string;
         type: 'ok';
         node_info: NodeInfo;
         peers_count?: number;
@@ -66,8 +66,12 @@ export type InstanceStats =
     ;
 
 export type QueueLine = {
-    host: string;
-    from_host?: string;
+    target: string;
+    from_endpoint?: string;
+};
+
+export type CheckedLine = {
+    target: string;
 };
 
 export type NgFilter =
