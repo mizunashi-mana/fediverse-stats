@@ -68,8 +68,8 @@ export class Fetcher {
         };
     }
 
-    async fetchPeers(host: string): Promise<FetchResult<Peers>> {
-        const mastodonPeersUrl = new URL('/api/v1/instance/peers', `https://${host}`);
+    async fetchPeers(baseUrl: URL): Promise<FetchResult<Peers>> {
+        const mastodonPeersUrl = new URL('/api/v1/instance/peers', baseUrl);
         const mastodonPeersResponse = await this.fetchResource(
             mastodonPeersUrl,
             {
@@ -203,6 +203,15 @@ export class Fetcher {
                 resourceStatus: 'unknown',
                 detail: `Failed to fetch ${url}: ${inspectError(error)}`,
             };
+        }
+
+        switch (response.headers['content-type']) {
+            case 'text/html':
+                return {
+                    type: 'fail',
+                    resourceStatus: 'not-supported',
+                    detail: `JSON resources are not available on ${url}.`,
+                };
         }
 
         return {

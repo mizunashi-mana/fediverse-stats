@@ -15,6 +15,7 @@ export class Measurement {
     private queueFilePath: string;
     private queued: Queued;
     private hostsQueue: string[];
+    private checkedCountVar: number;
 
     /**
      * TODO: Optimize and introduce auto detection.
@@ -26,12 +27,14 @@ export class Measurement {
         queued: Queued,
         queueFilePath: string,
         hostsQueue: string[],
+        checkedCount: number,
         ngList: NgFilter[],
     ) {
         this.resultFilePath = resultFilePath;
         this.queued = queued;
         this.queueFilePath = queueFilePath;
         this.hostsQueue = hostsQueue;
+        this.checkedCountVar = checkedCount;
         this.ngList = ngList;
     }
 
@@ -39,6 +42,7 @@ export class Measurement {
         this.queued[stats.host] = {
             checked: true,
         };
+        this.checkedCountVar = this.checkedCountVar + 1;
         await appendLines(this.resultFilePath, [stats]);
     }
 
@@ -92,6 +96,10 @@ export class Measurement {
     queuedCount(): number {
         return this.hostsQueue.length;
     }
+
+    checkedCount(): number {
+        return this.checkedCountVar;
+    }
 }
 
 export async function loadMeasurement(
@@ -101,6 +109,7 @@ export async function loadMeasurement(
 ): Promise<Measurement> {
     const queued: Queued = {};
     const hostsQueue: string[] = [];
+    let checkedCount = 0;
     const ngList: NgList = [];
 
     let existsResultFile = false;
@@ -117,6 +126,7 @@ export async function loadMeasurement(
         queued[data.host] = {
             checked: true,
         };
+        checkedCount = checkedCount + 1;
     });
 
     let existsNgListFile = false;
@@ -152,7 +162,7 @@ export async function loadMeasurement(
         }
     });
 
-    return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue, ngList);
+    return new Measurement(resultFilePath, queued, queueFilePath, hostsQueue, checkedCount, ngList);
 }
 
 async function uniqueQueueFile(filePath: string, ngList: NgList): Promise<void> {

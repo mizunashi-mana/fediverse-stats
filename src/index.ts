@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { Fetcher } from "./fetcher.js";
 import { loadMeasurement } from "./measurement.js";
+import { FetchResult, Peers } from "./types.js";
 
 async function main(): Promise<void> {
     const {
@@ -30,7 +31,9 @@ async function main(): Promise<void> {
         }
 
         const queuedCount = measurement.queuedCount();
-        console.log(`[${queuedCount.toString().padStart(8, ' ')} rests]: fetch ${host}...`);
+        const checkedCount = measurement.checkedCount();
+        const tag = `${queuedCount.toString().padStart(6, ' ')} rests, ${checkedCount.toString().padStart(6, ' ')} checked`;
+        console.log(`[${tag}]: fetch ${host}...`);
 
         const nodeInfo = await fetcher.fetchNodeinfo(host);
         console.debug(`Fetched the node info of ${host}.`);
@@ -48,8 +51,25 @@ async function main(): Promise<void> {
                 continue;
         }
 
-        const peers = await fetcher.fetchPeers(host);
-        console.debug(`Fetched peers of ${host}.`);
+        const nodeInfoResourceUrl = new URL(nodeInfo.data.resource_url);
+        const baseUrls = [
+            nodeInfoResourceUrl,
+        ];
+        if (nodeInfoResourceUrl.host !== host) {
+            baseUrls.push(new URL(`https://${host}`));
+        }
+        let peers: FetchResult<Peers> = {
+            type: 'fail',
+            resourceStatus: 'not-supported',
+            detail: 'unreachable',
+        };
+        for (const baseUrl of baseUrls) {
+            peers = await fetcher.fetchPeers(baseUrl);
+            console.debug(`Fetched peers of ${baseUrl.host}.`);
+            if (peers.type === 'ok') {
+                break;
+            }
+        }
         switch (peers.type) {
             case 'ok':
                 // continue

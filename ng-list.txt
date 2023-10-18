@@ -1,2 +1,3 @@
 {"type":"subdomain","main_domain":"activitypub-troll.cf"}
 {"type":"subdomain","main_domain":"gab.best"}
+{"type":"subdomain","main_domain":"4chan.icu"}
