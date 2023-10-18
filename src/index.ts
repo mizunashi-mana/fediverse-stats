@@ -16,7 +16,7 @@ async function main(): Promise<void> {
         options.ngListFile,
     );
 
-    await measurement.enqueueHost(args);
+    await measurement.enqueueHost(args, undefined);
 
     let limit = options.fetchLimit;
     while (limit === undefined || limit > 0) {
@@ -72,7 +72,7 @@ async function main(): Promise<void> {
         });
         console.debug(`Registered stats of ${host}.`);
 
-        const enqueueResult = await measurement.enqueueHost(peers.data.hosts);
+        const enqueueResult = await measurement.enqueueHost(peers.data.hosts, host);
         if (enqueueResult.includeNg) {
             console.warn(`The peers of ${host} include some NG peers.`);
         }

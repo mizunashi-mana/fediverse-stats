@@ -67,6 +67,7 @@ export type InstanceStats =
 
 export type QueueLine = {
     host: string;
+    from_host?: string;
 };
 
 export type NgFilter =

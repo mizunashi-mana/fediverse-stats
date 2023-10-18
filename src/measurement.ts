@@ -42,7 +42,7 @@ export class Measurement {
         await appendLines(this.resultFilePath, [stats]);
     }
 
-    async enqueueHost(hosts: string[]): Promise<{
+    async enqueueHost(hosts: string[], fromHost: string | undefined): Promise<{
         includeNg: boolean;
     }> {
         const result = {
@@ -60,6 +60,7 @@ export class Measurement {
             if (this.queued[host] === undefined && queued[host] === undefined) {
                 queueLines.push({
                     host,
+                    from_host: fromHost,
                 });
             }
         }
@@ -190,6 +191,10 @@ function isNgHost(host: string, ngList: NgList): boolean {
 }
 
 async function appendLines<T>(filePath: string, lines: T[]): Promise<void> {
+    if (lines.length === 0) {
+        return;
+    }
+
     const contents = `${lines.map(x => JSON.stringify(x)).join('\n')}\n`;
     await fsPromises.appendFile(filePath, contents);
 }
