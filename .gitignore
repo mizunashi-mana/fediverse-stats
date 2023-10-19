@@ -1,4 +1,12 @@
-node_modules/
+# Source
 src/**/*.js
-fediverse-stats.*
+
+# Output
+/fediverse-stats.*
 *.backup
+
+# Node.js
+node_modules/
+
+# Jupyter
+.ipynb_checkpoints/

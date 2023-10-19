@@ -42,17 +42,21 @@ async function main(): Promise<void> {
                 break;
             case 'fail':
                 // Use the base URL as an endpoint.
-                if (measurement.isEndpointChecked(target.baseUrl)) {
+                const endpoint = target.baseUrl;
+                if (measurement.isEndpointChecked(endpoint)) {
                     await measurement.markTargetsChecked([target]);
 
                     continue;
                 }
 
-                await measurement.registerStats(target, {
-                    endpoint: target.baseUrl.toString(),
-                    type: 'fail',
-                    resource_status: nodeInfo.resourceStatus,
-                    detail: nodeInfo.detail,
+                await measurement.registerStats({
+                    target,
+                    endpoint,
+                    result: {
+                        type: 'fail',
+                        resource_status: nodeInfo.resourceStatus,
+                        detail: nodeInfo.detail,
+                    },
                 });
                 continue;
         }
@@ -73,19 +77,25 @@ async function main(): Promise<void> {
                 break;
             case 'fail':
                 console.warn(`Failed to fetch peers of ${endpoint}: ${peers.detail}`);
-                await measurement.registerStats(target, {
-                    endpoint: endpoint.toString(),
-                    type: 'ok',
-                    node_info: nodeInfo.data,
+                await measurement.registerStats({
+                    target,
+                    endpoint,
+                    result: {
+                        type: 'ok',
+                        node_info: nodeInfo.data,
+                    },
                 });
                 continue;
         }
 
-        await measurement.registerStats(target, {
-            endpoint: endpoint.toString(),
-            type: 'ok',
-            node_info: nodeInfo.data,
-            peers_count: peers.data.hosts.length,
+        await measurement.registerStats({
+            target,
+            endpoint,
+            result: {
+                type: 'ok',
+                node_info: nodeInfo.data,
+                peers_count: peers.data.hosts.length,
+            },
         });
         console.debug(`Registered stats of ${endpoint}.`);
 
@@ -118,13 +128,13 @@ async function parseArgs(): Promise<{
         .description('Fetch stats of Fediverse instances.')
         .version('0.1.0');
 
-    program.option('--result-file <PATH>', 'A file path of results.', 'fediverse-stats.txt');
-    program.option('--queue-file <PATH>', 'A file path of queue.');
-    program.option('--checked-file <PATH>', 'A file path of checked.');
-    program.option('--ng-list-file <PATH>', 'A file path of NG filters.', 'ng-list.txt');
-    program.option('--fetch-timeout-sec <INT>', 'Timeout to fetch by seconds.', parseInt, 3);
-    program.option('--fetch-limit <INT>', 'Limit count to fetch (optional)', parseInt);
-    program.argument('<HOST>', 'The start hosts to fetch');
+    program.option('--result-file <path>', 'A file path of results.', 'fediverse-stats.txt');
+    program.option('--queue-file <path>', 'A file path of queue. (default: \'<RESULT_FILE>.queue\')');
+    program.option('--checked-file <path>', 'A file path of checked. (default: \'<RESULT_FILE>.checked\')');
+    program.option('--ng-list-file <path>', 'A file path of NG filters.', 'ng-list.txt');
+    program.option('--fetch-timeout-sec <int>', 'Timeout to fetch by seconds.', (x) => parseInt(x), 3);
+    program.option('--fetch-limit <int>', 'Limit count to fetch (optional)', (x) => parseInt(x));
+    program.argument('<host>', 'The start hosts to fetch');
 
     await program.parseAsync();
 

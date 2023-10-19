@@ -50,15 +50,19 @@ export type Peers = {
     hosts: string[];
 };
 
-export type InstanceStats =
+export type InstanceStats = {
+    endpoint: string;
+    checked_target: string;
+    result: ResultOfInstanceStats;
+};
+
+export type ResultOfInstanceStats =
     | {
-        endpoint: string;
         type: 'fail';
         resource_status: 'gone' | 'not-supported' | 'unknown';
         detail: string;
     }
     | {
-        endpoint: string;
         type: 'ok';
         node_info: NodeInfo;
         peers_count?: number;

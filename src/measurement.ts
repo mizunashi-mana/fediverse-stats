@@ -1,7 +1,6 @@
 import * as fsPromises from 'node:fs/promises';
 import * as fs from 'node:fs';
-import { CheckedLine, InstanceStats, NgFilter, QueueLine } from './types.js';
-import { trace } from 'node:console';
+import { CheckedLine, InstanceStats, NgFilter, QueueLine, ResultOfInstanceStats } from './types.js';
 
 type TargetsQueue = {
     queue: string[];
@@ -54,12 +53,21 @@ export class Measurement {
         this.ngList = props.ngList;
     }
 
-    async registerStats(target: ValidTarget, stats: InstanceStats): Promise<void> {
+    async registerStats(props: {
+        target: ValidTarget;
+        endpoint: URL;
+        result: ResultOfInstanceStats;
+    }): Promise<void> {
+        const stats: InstanceStats = {
+            endpoint: props.endpoint.toString(),
+            checked_target: props.target.target,
+            result: props.result,
+        };
         await appendLines(this.resultFilePath, [stats]);
 
         this.checkedEndpoints.count = this.checkedEndpoints.count + 1;
         this.checkedEndpoints.mark[stats.endpoint] = {};
-        await this.markTargetsChecked([target]);
+        await this.markTargetsChecked([props.target]);
     }
 
     endpointByResourceUrl(url: URL): URL {
