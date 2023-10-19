@@ -18,4 +18,4 @@ npm run start -- --help
 
 Inspired by https://gist.github.com/zunda/f566e2bb85ca0616d351139363274ec5.
 
-Codes are licensed under the Apache-2.0.  See [LICENSE].
+Codes are licensed under the Apache-2.0.  See [LICENSE](./LICENSE).
