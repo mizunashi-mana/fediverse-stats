@@ -184,10 +184,17 @@ export class Fetcher {
                         };
                     case 400:
                     case 404:
+                    case 405:
                         return {
                             type: 'fail',
                             resourceStatus: 'not-supported',
                             detail: `Failed to fetch ${url}: the resource is not available.`,
+                        };
+                    case 300:
+                        return {
+                            type: 'fail',
+                            resourceStatus: 'not-supported',
+                            detail: `Failed to fetch ${url}: multiple resources are not supported.`,
                         };
                     default:
                         let detail = JSON.stringify(error.response.data);
