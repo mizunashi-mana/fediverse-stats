@@ -47,7 +47,11 @@ export type NodeInfo = {
 };
 
 export type Peers = {
-    hosts: string[];
+    hosts: InstancePeer[];
+};
+
+export type InstancePeer = {
+    host: string;
 };
 
 export type InstanceStats = {

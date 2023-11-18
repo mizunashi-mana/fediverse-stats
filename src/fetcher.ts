@@ -68,41 +68,13 @@ export class Fetcher {
         };
     }
 
-    async fetchPeers(baseUrl: URL): Promise<FetchResult<Peers>> {
-        const mastodonPeersUrl = new URL('/api/v1/instance/peers', baseUrl);
-        const mastodonPeersResponse = await this.fetchResource(
-            mastodonPeersUrl,
-            {
-                'Accept': 'application/json',
-            },
-        );
-        switch (mastodonPeersResponse.type) {
-            case 'ok':
-                // continue
-                break;
-            case 'fail':
-                return mastodonPeersResponse;
+    async fetchPeers(baseUrl: URL, softwareName: string | undefined): Promise<FetchResult<Peers>> {
+        switch (softwareName) {
+            case 'lemmy':
+                return await this.fetchPeersLemmy(baseUrl);
+            default:
+                return await this.fetchPeersMastodon(baseUrl);
         }
-
-        const mastodonPeersData = mastodonPeersResponse.data
-            .asArray()
-            ?.map(x => x.asString())
-            .filter(isNotUndefined)
-            ;
-        if (mastodonPeersData !== undefined) {
-            return {
-                type: 'ok',
-                data: {
-                    hosts: mastodonPeersData,
-                },
-            };
-        }
-
-        return {
-            type: 'fail',
-            resourceStatus: 'not-supported',
-            detail: 'Mastodon API is not available.',
-        };
     }
 
     private async fetchRawNodeinfo(url: URL, type: NodeInfoResourceType): Promise<FetchResult<NodeInfo>> {
@@ -152,6 +124,110 @@ export class Fetcher {
 
                 langs: data.asObject('metadata')?.asObject('langs')?.asArray()?.map(x => x.asString()).filter(isNotUndefined),
                 max_note_text_length: data.asObject('metadata')?.asObject('maxNoteTextLength')?.asNumber(),
+            },
+        };
+    }
+
+    private async fetchPeersMastodon(baseUrl: URL): Promise<FetchResult<Peers>> {
+        const mastodonPeersUrl = new URL('/api/v1/instance/peers', baseUrl);
+        const mastodonPeersResponse = await this.fetchResource(
+            mastodonPeersUrl,
+            {
+                'Accept': 'application/json',
+            },
+        );
+        switch (mastodonPeersResponse.type) {
+            case 'ok':
+                // continue
+                break;
+            case 'fail':
+                return mastodonPeersResponse;
+        }
+
+        const mastodonPeersData = mastodonPeersResponse.data
+            .asArray();
+        if (mastodonPeersData === undefined) {
+            return {
+                type: 'fail',
+                resourceStatus: 'not-supported',
+                detail: 'The peers API is not compatible with the Mastodon API.',
+            };
+        }
+
+        const peers = mastodonPeersData.map(x => {
+            // https://docs.joinmastodon.org/methods/instance/#peers
+            const hostStr = x.asString();
+            if (hostStr !== undefined) {
+                return {
+                    host: hostStr,
+                };
+            }
+
+            // https://docs.gotosocial.org/en/latest/api/swagger/#operations-instance-instancePeersGet
+            const domain = x.asObject('domain')?.asString();
+            if (domain !== undefined) {
+                return {
+                    host: domain,
+                };
+            }
+
+            return undefined;
+        }).filter(isNotUndefined);
+
+        return {
+            type: 'ok',
+            data: {
+                hosts: peers,
+            },
+        };
+    }
+
+    /**
+     * Ref: https://lemmy.readme.io/reference/get_federated-instances
+     */
+    private async fetchPeersLemmy(baseUrl: URL): Promise<FetchResult<Peers>> {
+        const lemmyPeersUrl = new URL('/api/v3/federated_instances', baseUrl);
+        const lemmyPeersResponse = await this.fetchResource(
+            lemmyPeersUrl,
+            {
+                'Accept': 'application/json',
+            },
+        );
+        switch (lemmyPeersResponse.type) {
+            case 'ok':
+                // continue
+                break;
+            case 'fail':
+                return lemmyPeersResponse;
+        }
+
+        const lemmyPeersData = lemmyPeersResponse.data
+            .asObject('federated_instances')
+            ?.asObject('linked')
+            ?.asArray();
+        if (lemmyPeersData === undefined) {
+            return {
+                type: 'fail',
+                resourceStatus: 'not-supported',
+                detail: 'The peers API is not compatible with the Lemmy API.',
+            };
+        }
+
+        const peers = lemmyPeersData.map(x => {
+            const domain = x.asObject('domain')?.asString();
+            if (domain !== undefined) {
+                return {
+                    host: domain,
+                };
+            }
+
+            return undefined;
+        }).filter(isNotUndefined);
+
+        return {
+            type: 'ok',
+            data: {
+                hosts: peers,
             },
         };
     }

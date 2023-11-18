@@ -69,7 +69,7 @@ async function main(): Promise<void> {
             continue;
         }
 
-        const peers = await fetcher.fetchPeers(endpoint);
+        const peers = await fetcher.fetchPeers(endpoint, nodeInfo.data.software_name);
         console.debug(`Fetched peers of ${endpoint}.`);
         switch (peers.type) {
             case 'ok':
@@ -99,7 +99,8 @@ async function main(): Promise<void> {
         });
         console.debug(`Registered stats of ${endpoint}.`);
 
-        const enqueueResult = await measurement.enqueueTargets(peers.data.hosts, endpoint);
+        const peerHosts = peers.data.hosts.map(x => x.host);
+        const enqueueResult = await measurement.enqueueTargets(peerHosts, endpoint);
         if (enqueueResult.includeNg) {
             console.warn(`The peers of ${endpoint} include some NG peers.`);
         }
